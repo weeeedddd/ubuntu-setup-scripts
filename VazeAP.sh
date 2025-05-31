@@ -3,7 +3,7 @@
 set -e
 
 LOGFILE="$HOME/ubuntu-setup-$(date +%Y%m%d_%H%M%S).log"
-SCRIPT_URL="https://gist.githubusercontent.com/yourusername/yourgistid/raw/ubuntu-setup-progress.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/weeeedddd/ubuntu-setup-scripts/main/VazeAP.sh"
 
 # Funktion für Update prüfen und ggf. laden
 check_update() {
