@@ -2,246 +2,211 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
 LOGFILE="$HOME/ubuntu-setup-$(date +%Y%m%d_%H%M%S).log"
 SCRIPT_URL="https://raw.githubusercontent.com/weeeedddd/ubuntu-setup-scripts/main/VazeAP.sh"
 
-# ASCII Art Logo (VazeAP) - fallback if figlet missing
-print_logo() {
-cat << "EOF"
- __     ______  _    _   _      ____   ___   ____  
- \ \   / / __ \| |  | | | |    / __ \ / _ \ / __ \ 
-  \ \_/ / |  | | |  | | | |   | |  | | | | | |  | |
-   \   /| |  | | |  | | | |   | |  | | | | | |  | |
-    | | | |__| | |__| | | |___| |__| | |_| | |__| |
-    |_|  \____/ \____/  |______\____/ \___/ \____/ 
-                                                  
+# Fancy ASCII Art Banner for VazeAP
+print_banner() {
+  cat << "EOF"
+__     ______  _    _   _      ____   _____ _____ 
+\ \   / / __ \| |  | | | |    / __ \ / ____|  __ \
+ \ \_/ / |  | | |  | | | |   | |  | | (___ | |__) |
+  \   /| |  | | |  | | | |   | |  | |\___ \|  ___/
+   | | | |__| | |__| | | |___| |__| |____) | |    
+   |_|  \____/ \____/  |______\____/|_____/|_|    
+                                                 
+            VazeAP Setup Script
 EOF
+  echo
 }
 
-# Progress bar function
-progress_bar() {
-  local progress=$1
-  local width=40
-  local filled=$(( progress * width / 100 ))
-  local empty=$(( width - filled ))
-  local bar="$(printf "%${filled}s" | tr ' ' '#')$(printf "%${empty}s" | tr ' ' '-')"
-  echo -ne "[${bar}] ${progress}%\r"
-}
-
-# Check for script update
+# Function for Update Check & Self-Update
 check_update() {
-  echo -e "${CYAN}Checking for updates...${NC}"
+  echo "Checking for updates..."
   TMPFILE=$(mktemp)
-  curl -fsSL "$SCRIPT_URL" -o "$TMPFILE" || { echo -e "${RED}Failed to check update${NC}"; return 1; }
+  curl -fsSL "$SCRIPT_URL" -o "$TMPFILE" || { echo "Failed to check update"; return 1; }
 
   DIFF=$(diff "$0" "$TMPFILE" || true)
   if [ -n "$DIFF" ]; then
-    if whiptail --yesno "A new version of this script is available. Update now?" 10 60; then
-      echo -e "${YELLOW}Updating script...${NC}"
+    whiptail --yesno "A new version of this setup script is available. Update now?" 10 60
+    if [ $? -eq 0 ]; then
+      echo "Updating script..."
       chmod +x "$TMPFILE"
       exec "$TMPFILE" "$@"
       exit 0
     else
-      echo -e "${YELLOW}Continuing with current version...${NC}"
+      echo "Continuing with current version."
     fi
   else
-    echo -e "${GREEN}You already have the latest version.${NC}"
+    echo "You have the latest version."
   fi
+
   rm -f "$TMPFILE"
 }
 
-# Installation functions
+# Progress bar helper
+progress() {
+  echo "XXX"
+  echo "$1"
+  echo "$2"
+  echo "XXX"
+}
+
+# Fix MariaDB / MySQL dependency issues before installing
+fix_mariadb_dependencies() {
+  progress 5 "Fixing MariaDB/MySQL package dependencies..."
+
+  sudo apt update
+
+  # Repair broken dependencies
+  sudo apt --fix-broken install -y
+  sudo apt-get install -f -y
+  sudo dpkg --configure -a
+
+  # Remove conflicting MySQL packages that might cause issues
+  sudo apt remove --purge -y mysql-client-core-8.0 mysql-client mysql-server mysql-common || true
+  sudo apt autoremove -y
+
+  # Unhold held packages if any
+  HELD_PACKAGES=$(sudo apt-mark showhold)
+  if [ -n "$HELD_PACKAGES" ]; then
+    echo "Unholding packages: $HELD_PACKAGES"
+    sudo apt-mark unhold $HELD_PACKAGES
+  fi
+
+  sudo apt update
+  sudo apt upgrade -y
+
+  progress 10 "Dependency fix completed."
+}
 
 install_minimal() {
-  echo -e "${CYAN}\n[Minimal] Updating system & installing core tools...${NC}"
-  progress_bar 10; sudo apt update && sudo apt upgrade -y
-  progress_bar 30; sudo apt install -y curl wget git unzip zip htop net-tools software-properties-common build-essential neofetch ufw
-  progress_bar 50
-  echo -e "\n${GREEN}[Minimal] Done.${NC}"
+  progress 15 "Updating system and installing core tools..."
+  sudo apt update && sudo apt upgrade -y
+  sudo apt install -y curl wget git unzip zip htop net-tools software-properties-common build-essential neofetch ufw
 }
 
 install_java() {
-  echo -e "${CYAN}\n[Java] Installing OpenJDK versions 8,11,17,21...${NC}"
-  progress_bar 55; sudo add-apt-repository ppa:openjdk-r/ppa -y
-  progress_bar 60; sudo apt update
-  progress_bar 70; sudo apt install -y openjdk-8-jdk openjdk-11-jdk openjdk-17-jdk openjdk-21-jdk
-  progress_bar 80
-  echo -e "\n${GREEN}[Java] Done.${NC}"
+  progress 30 "Installing Java 8, 11, 17, 21..."
+  sudo add-apt-repository ppa:openjdk-r/ppa -y
+  sudo apt update
+  sudo apt install -y openjdk-8-jdk openjdk-11-jdk openjdk-17-jdk openjdk-21-jdk
 }
 
 install_webdev() {
-  echo -e "${CYAN}\n[WebDev] Installing Python3, NodeJS, Docker...${NC}"
-  progress_bar 60; sudo apt install -y python3 python3-pip nodejs npm docker.io docker-compose
-  progress_bar 80; sudo usermod -aG docker $USER
-  progress_bar 90
-  echo -e "\n${GREEN}[WebDev] Done.${NC}"
+  progress 50 "Installing Web Development tools (Python3, Node.js, Docker)..."
+  sudo apt install -y python3 python3-pip nodejs npm docker.io docker-compose
+  sudo usermod -aG docker $USER
 }
 
 install_datasci() {
-  echo -e "${CYAN}\n[Data Science] Installing Python3, Jupyter & databases...${NC}"
-  progress_bar 60; sudo apt install -y python3 python3-pip jupyter-notebook default-mysql-client mariadb-server postgresql sqlite3
-  progress_bar 80
-  echo -e "\n${GREEN}[Data Science] Done.${NC}"
+  fix_mariadb_dependencies
+
+  progress 70 "Installing Data Science tools (Python3, Jupyter, DBs)..."
+  sudo apt install -y python3 python3-pip jupyter-notebook mariadb-server mariadb-client postgresql sqlite3 default-mysql-client
 }
 
 install_media() {
-  echo -e "${CYAN}\n[Media] Installing multimedia tools...${NC}"
-  progress_bar 70; sudo apt install -y vlc gimp obs-studio qbittorrent gparted
-  progress_bar 85
-  echo -e "\n${GREEN}[Media] Done.${NC}"
+  progress 85 "Installing Media & UI tools..."
+  sudo apt install -y vlc gimp obs-studio qbittorrent gparted
 }
 
 install_perf() {
-  echo -e "${CYAN}\n[Performance] Applying performance tweaks...${NC}"
-  progress_bar 80; sudo apt install -y zram-tools
+  progress 95 "Applying performance tweaks..."
+  sudo apt install -y zram-tools
   sudo systemctl enable zramswap --now
   echo 'vm.swappiness=20' | sudo tee -a /etc/sysctl.conf
   sudo sysctl -p
-  progress_bar 95
-  echo -e "\n${GREEN}[Performance] Done.${NC}"
 }
 
 install_vscode() {
-  echo -e "${CYAN}\n[VS Code] Installing...${NC}"
-  if sudo snap install code --classic; then
-    progress_bar 100
-    echo -e "\n${GREEN}[VS Code] Done.${NC}"
-  else
-    echo -e "\n${RED}[VS Code] Installation failed.${NC}"
-  fi
+  progress 99 "Installing Visual Studio Code..."
+  sudo snap install code --classic || echo "?? VS Code installation failed"
 }
 
 install_pterodactyl() {
-  echo -e "${CYAN}\n[Pterodactyl] Installing Panel and Wings...${NC}"
-  progress_bar 0
-
-  # System update & dependencies
-  sudo apt update && sudo apt upgrade -y
-  progress_bar 20
-
-  sudo apt install -y php php-cli php-fpm php-mysql php-zip php-gd php-mbstring php-curl php-bcmath php-xml php-tokenizer php-json mariadb-server nginx redis-server unzip git curl
-  progress_bar 40
-
-  # Example Panel install (customize needed!)
-  cd /var/www || exit
-  sudo git clone https://github.com/pterodactyl/panel.git pterodactyl
-  cd pterodactyl || exit
-  sudo cp .env.example .env
-  # Note: Configure your .env, create database etc.
-  progress_bar 60
-
-  # Wings installation
-  curl -Lo wings.tar.gz https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_amd64.tar.gz
-  tar -xzf wings.tar.gz -C /usr/local/bin wings
-  sudo chmod +x /usr/local/bin/wings
-  progress_bar 90
-
-  echo -e "${GREEN}\n[Pterodactyl] Installation complete!${NC}"
-  progress_bar 100
-  echo
+  whiptail --yesno "Do you want to install Pterodactyl Panel?" 8 60
+  if [ $? -eq 0 ]; then
+    progress 20 "Installing Pterodactyl Panel prerequisites..."
+    sudo apt install -y nginx mariadb-server mariadb-client php php-fpm php-mysql php-redis php-cli php-curl php-mbstring php-zip php-bcmath unzip curl tar git redis-server
+    # Add your full Pterodactyl install commands here or call an install script
+    progress 40 "Pterodactyl Panel installation started..."
+    # Placeholder: you can insert your actual Pterodactyl install steps here
+    echo "Pterodactyl install logic goes here..."
+  else
+    echo "Skipping Pterodactyl installation."
+  fi
 }
 
-# Script start
+main() {
+  print_banner
 
-clear
-print_logo
+  check_update "$@"
 
-check_update "$@"
+  exec > >(tee -a "$LOGFILE") 2>&1
 
-exec > >(tee -a "$LOGFILE") 2>&1
+  # Ask sudo password upfront
+  sudo -v
 
-sudo -v
-
-# Ensure required tools installed
-for pkg in whiptail dialog curl figlet; do
-  if ! command -v $pkg &> /dev/null; then
-    echo -e "${YELLOW}Installing $pkg...${NC}"
-    sudo apt install -y $pkg
-  fi
-done
-
-# Profile selection
-PROFILE=$(whiptail --title "Ubuntu Setup Profiles" --menu "Choose a profile:" 15 60 5 \
-"minimal" "Minimal - essentials only" \
-"webdev" "Web Development (Node, Python, Docker)" \
-"datasci" "Data Science (Python, Jupyter, DBs)" \
-"fullstack" "Full Stack (everything + media + performance)" \
-"custom" "Custom (with Pterodactyl option)" 3>&1 1>&2 2>&3)
-
-if [ $? -ne 0 ]; then
-  echo -e "${RED}Setup cancelled.${NC}"
-  exit 1
-fi
-
-# Ask if user wants Pterodactyl installed
-if whiptail --title "Pterodactyl Installation" --yesno "Do you want to install Pterodactyl Panel and Wings?" 8 60; then
-  INSTALL_PTERODACTYL=true
-else
-  INSTALL_PTERODACTYL=false
-fi
-
-# Run install functions per profile
-case $PROFILE in
-  minimal)
-    install_minimal
-    install_java
-    install_vscode
-    ;;
-  webdev)
-    install_minimal
-    install_java
-    install_webdev
-    install_vscode
-    ;;
-  datasci)
-    install_minimal
-    install_java
-    install_datasci
-    install_vscode
-    ;;
-  fullstack)
-    install_minimal
-    install_java
-    install_webdev
-    install_datasci
-    install_media
-    install_perf
-    install_vscode
-    ;;
-  custom)
-    # Custom profile: minimal + optional modules
-    install_minimal
-    install_java
-    if whiptail --yesno "Install Web Development tools?" 8 50; then
-      install_webdev
+  # Install required basic tools
+  for pkg in whiptail dialog curl; do
+    if ! command -v $pkg &> /dev/null; then
+      echo "Installing $pkg..."
+      sudo apt install -y $pkg
     fi
-    if whiptail --yesno "Install Data Science tools?" 8 50; then
-      install_datasci
-    fi
-    if whiptail --yesno "Install Media tools?" 8 50; then
-      install_media
-    fi
-    if whiptail --yesno "Apply Performance tweaks?" 8 50; then
-      install_perf
-    fi
-    install_vscode
-    ;;
-  *)
-    echo -e "${RED}Invalid option.${NC}"
+  done
+
+  PROFILE=$(whiptail --title "Ubuntu Setup Profiles" --menu "Choose a profile to install:" 15 60 5 \
+  "minimal" "Minimal - only essentials" \
+  "webdev" "Web Development (Node, Python, Docker)" \
+  "datasci" "Data Science (Python, Jupyter, DBs)" \
+  "fullstack" "Full Stack (everything + media + performance tweaks)" \
+  "pterodactyl" "Pterodactyl Panel Installer (optional)" 3>&1 1>&2 2>&3)
+
+  if [ $? -ne 0 ]; then
+    echo "Setup canceled."
     exit 1
-    ;;
-esac
+  fi
 
-# Optional Pterodactyl installation
-if [ "$INSTALL_PTERODACTYL" = true ]; then
-  install_pterodactyl
-fi
+  case $PROFILE in
+    minimal)
+      install_minimal
+      install_java
+      install_vscode
+      ;;
+    webdev)
+      install_minimal
+      install_java
+      install_webdev
+      install_vscode
+      ;;
+    datasci)
+      install_minimal
+      install_java
+      install_datasci
+      install_vscode
+      ;;
+    fullstack)
+      install_minimal
+      install_java
+      install_webdev
+      install_datasci
+      install_media
+      install_perf
+      install_vscode
+      ;;
+    pterodactyl)
+      install_pterodactyl
+      ;;
+    *)
+      echo "Invalid option."
+      exit 1
+      ;;
+  esac
 
-echo -e "\n${GREEN}? Setup for profile '$PROFILE' completed! Log saved at:\n$LOGFILE${
+  progress 100 "Setup complete!"
+
+  whiptail --title "Setup finished" --msgbox "? Setup for profile '$PROFILE' complete!\n\nLog saved to:\n$LOGFILE\n\nPlease reboot to apply changes." 12 60
+}
+
+main "$@"
