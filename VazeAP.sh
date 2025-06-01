@@ -127,16 +127,21 @@ install_webdev() {
 }
 
 install_datasci() {
-  progress 10 "Fixing packages & installing Data Science tools"
-  sudo apt-get update --fix-missing
-  sudo apt-get install -f -y
-  sudo dpkg --configure -a
-  sudo apt-get -o Dpkg::Options::="--force-confnew" --fix-broken install -y
-  sudo apt-get clean && sudo apt-get autoremove -y
-  progress 30
-  sudo apt install -y mariadb-server mariadb-client python3-pip jupyter-notebook default-mysql-client postgresql sqlite3
-  progress 70
-  echo -e "\n?? Data Science tools installed."
+  progress 70 "Installing Data Science tools (Python3, Jupyter, DBs)..."
+  sudo apt install -y python3 python3-pip jupyter-notebook mariadb-server postgresql sqlite3
+
+  # Hier kommt unser neuer Block rein:
+  echo "ðŸ›‘ Checking for broken MySQL dependencies..."
+  if ! sudo apt-get install -y default-mysql-client; then
+    whiptail --title "MySQL Client Issue" --msgbox "default-mysql-client could not be installed (missing mysql-client-8.0).\nTrying to install mariadb-client instead..." 10 60
+    if ! sudo apt-get install -y mariadb-client; then
+      whiptail --title "MariaDB Client Warning" --msgbox "MariaDB client could also not be installed. Continuing the setup anyway..." 10 60
+    else
+      whiptail --title "MariaDB Client Installed" --msgbox "MariaDB client was installed successfully as a replacement." 10 60
+    fi
+  else
+    echo "âœ… default-mysql-client installed successfully."
+  fi
 }
 
 install_media() {
@@ -242,10 +247,10 @@ install_benchmark() {
   progress 10 "Installing speedtest & benchmark tools"
   sudo apt install -y speedtest-cli sysbench
   progress 40
-  echo -e "? Running quick CPU benchmark…"
+  echo -e "? Running quick CPU benchmark "
   sysbench cpu --cpu-max-prime=20000 run
   progress 70
-  echo -e "? Running quick memory benchmark…"
+  echo -e "? Running quick memory benchmark "
   sysbench memory run
   progress 100
   echo -e "\n?? Benchmarking complete. Results above."
