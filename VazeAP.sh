@@ -1,251 +1,226 @@
 #!/bin/bash
 
+# =======================================================================
+# ?? VazeAP - Automated Ubuntu Setup & Optimization ??
+# =======================================================================
+
 set -e
 
-LOGFILE="$HOME/ubuntu-setup-$(date +%Y%m%d_%H%M%S).log"
-SCRIPT_URL="https://raw.githubusercontent.com/weeeedddd/ubuntu-setup-scripts/main/VazeAP.sh"
+LOGFILE="$HOME/VazeAP-setup-$(date +%Y%m%d_%H%M%S).log"
+REPO_USER="weeeedddd"
+REPO_NAME="ubuntu-setup-scripts"
+SCRIPT_NAME="VazeAP.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/$REPO_USER/$REPO_NAME/main/$SCRIPT_NAME"
 
-function print_logo() {
-cat << "EOF"
- __     ______  _    _   _      ____   _____ _____ 
- \ \   / / __ \| |  | | | |    / __ \ / ____|  __ \
-  \ \_/ / |  | | |  | | | |   | |  | | (___ | |__) |
-   \   /| |  | | |  | | | |   | |  | |\___ \|  ___/
-    | | | |__| | |__| | | |___| |__| |____) | |    
-    |_|  \____/ \____/  |______\____/|_____/|_|    
-                                 Automated Setup Script
-EOF
+# -----------------------------------------------------------------------
+# ?? Fancy Banner & Self-Update
+# -----------------------------------------------------------------------
+print_logo() {
+  echo -e "\n"
+  echo -e "\e[95m?????????????????????????\e[0m"
+  echo -e "\e[95m?   \e[96m_VazeAP_ - Automated Ubuntu Setup Script   \e[95m?\e[0m"
+  echo -e "\e[95m?  \e[93m?? Powered by VazeAP - Efficiency & Magic! ??  \e[95m?\e[0m"
+  echo -e "\e[95m?????????????????????????\e[0m"
+  echo -e "\n"
 }
 
-check_update() {
-  echo "Checking for updates..."
-  TMPFILE=$(mktemp)
-  curl -fsSL "$SCRIPT_URL" -o "$TMPFILE" || { echo "Failed to check update"; return 1; }
-
-  DIFF=$(diff "$0" "$TMPFILE" || true)
-  if [ -n "$DIFF" ]; then
-    whiptail --yesno "A new version of this setup script is available. Update now?" 10 60
-    if [ $? -eq 0 ]; then
-      echo "Updating script..."
-      chmod +x "$TMPFILE"
-      exec "$TMPFILE" "$@"
+check_for_update() {
+  echo -e "?? Checking for script updates..."
+  LOCAL_SCRIPT="$0"
+  TMP_SCRIPT=$(mktemp)
+  if curl -fsSL "$SCRIPT_URL" -o "$TMP_SCRIPT"; then
+    if ! diff -q "$LOCAL_SCRIPT" "$TMP_SCRIPT" > /dev/null; then
+      echo -e "? New version found! Updating..."
+      chmod +x "$TMP_SCRIPT"
+      exec "$TMP_SCRIPT" "$@"
       exit 0
     else
-      echo "Continuing with current version."
+      echo -e "? Script is already up to date."
     fi
   else
-    echo "You have the latest version."
+    echo -e "??  Failed to check for updates (network issue?)."
   fi
-
-  rm -f "$TMPFILE"
+  rm -f "$TMP_SCRIPT"
 }
 
+# -----------------------------------------------------------------------
+# ?? Begin Execution
+# -----------------------------------------------------------------------
 print_logo
-check_update "$@"
+check_for_update "$@"
 
+# Start logging
 exec > >(tee -a "$LOGFILE") 2>&1
 
+# Ask for sudo upfront
 sudo -v
 
-for pkg in whiptail dialog curl; do
-  if ! command -v $pkg &> /dev/null; then
-    echo "Installing $pkg..."
+# Ensure required packages
+for pkg in whiptail dialog curl wget git; do
+  if ! command -v $pkg &>/dev/null; then
+    echo -e "?? Installing missing package: $pkg ..."
     sudo apt install -y $pkg
   fi
 done
 
-PROFILE=$(whiptail --title "Ubuntu Setup Profiles" --menu "Choose a profile to install:" 15 60 4 \
-"minimal" "Minimal - only essentials" \
-"webdev" "Web Development (Node, Python, Docker)" \
-"datasci" "Data Science (Python, Jupyter, DBs)" \
-"fullstack" "Full Stack (everything + media + performance tweaks)" 3>&1 1>&2 2>&3)
+# -----------------------------------------------------------------------
+# ?? Main Menu: Choose Profile or Features
+# -----------------------------------------------------------------------
+PROFILE=$(whiptail --title "?? VazeAP Setup Menu" --menu "Select profile or features to install:" 24 80 10 \
+  "minimal"     "?? Minimal: Core essentials" \
+  "webdev"      "?? WebDev: Node.js, Python, Docker" \
+  "datasci"     "?? Data Science: Python, Jupyter, DBs" \
+  "fullstack"   "?? Full Stack: Everything + Media & Performance" \
+  "serveropt"   "??? Server Optimization: Sysctl, SSH, TCP, DNS, GRUB" \
+  "texlive"     "?? TeX Live: Latest LaTeX distribution" \
+  "benchmark"   "?? Benchmark & Speedtest Tools" \
+  "monitoring"  "?? Monitoring Stack: Prometheus & Netdata" \
+  "backup"      "?? BorgBackup for automated backups" \
+  "ultraperf"   "? Ultra Performance: CPU, I/O, NUMA, Kernel" \
+  "all"         "? All features at once" \
+  "custom"      "?? Custom: Select modules interactively" 3>&1 1>&2 2>&3) || { echo -e "? Setup canceled."; exit 1; }
 
-if [ $? -ne 0 ]; then
-  echo "Setup canceled."
-  exit 1
-fi
-
-INSTALL_PTERODACTYL=false
-if whiptail --yesno "Do you want to install Pterodactyl Panel and Wings?" 10 60; then
-  INSTALL_PTERODACTYL=true
-fi
-
+# Initialize flags
 INSTALL_SECURITY=false
-if whiptail --yesno "Do you want to apply DDOS protection and security tweaks?" 10 60; then
-  INSTALL_SECURITY=true
+INSTALL_TEXLIVE=false
+INSTALL_SERVEROPT=false
+INSTALL_BENCHMARK=false
+INSTALL_MONITORING=false
+INSTALL_BACKUP=false
+INSTALL_ULTRAPERF=false
+
+# Ask optional installs if using custom or all
+if [ "$PROFILE" == "all" ] || [ "$PROFILE" == "custom" ]; then
+  if whiptail --yesno "??? Apply DDOS & Security Hardening?" 10 60; then
+    INSTALL_SECURITY=true
+  fi
+  if whiptail --yesno "?? Install TeX Live?" 10 60; then
+    INSTALL_TEXLIVE=true
+  fi
+  if whiptail --yesno "?? Apply server optimization features?" 10 60; then
+    INSTALL_SERVEROPT=true
+  fi
+  if whiptail --yesno "?? Install benchmarking & speedtest?" 10 60; then
+    INSTALL_BENCHMARK=true
+  fi
+  if whiptail --yesno "?? Install monitoring stack?" 10 60; then
+    INSTALL_MONITORING=true
+  fi
+  if whiptail --yesno "?? Setup BorgBackup?" 10 60; then
+    INSTALL_BACKUP=true
+  fi
+  if whiptail --yesno "? Apply Ultra Performance Tweaks?" 10 60; then
+    INSTALL_ULTRAPERF=true
+  fi
 fi
 
-function progress() {
-  echo "XXX"
-  echo "$1"
-  echo "$2"
-  echo "XXX"
-}
-
-install_minimal() {
-  progress 10 "Updating system and installing core tools..."
-  sudo apt update && sudo apt upgrade -y
-  sudo apt install -y curl wget git unzip zip htop net-tools software-properties-common build-essential neofetch ufw
-}
-
-install_java() {
-  progress 20 "Installing Java 8,11,17,21..."
-  sudo add-apt-repository ppa:openjdk-r/ppa -y
-  sudo apt update
-  sudo apt install -y openjdk-8-jdk openjdk-11-jdk openjdk-17-jdk openjdk-21-jdk
-}
-
-install_webdev() {
-  progress 30 "Installing WebDev tools (Python3, Nodejs, Docker)..."
-  sudo apt install -y python3 python3-pip nodejs npm docker.io docker-compose
-  sudo usermod -aG docker $USER
-}
-
-install_datasci() {
-  progress 40 "Fixing broken packages..."
-  sudo apt-get update --fix-missing
-  sudo apt-get install -f -y
-  sudo dpkg --configure -a
-  sudo apt-get -o Dpkg::Options::="--force-confnew" --fix-broken install -y
-  sudo apt-get clean
-  sudo apt-get autoremove -y
-
-  progress 41 "Installing MariaDB server and client..."
-  sudo apt install -y mariadb-server mariadb-client
-
-  progress 42 "Installing Data Science tools (Python3, Jupyter, DBs)..."
-  sudo apt install -y python3 python3-pip jupyter-notebook default-mysql-client postgresql sqlite3
-}
-
-install_media() {
-  progress 50 "Installing Media & UI tools..."
-  sudo apt install -y vlc gimp obs-studio qbittorrent gparted
-}
-
-install_perf() {
-  progress 60 "Applying performance and RAM tweaks..."
-
-  sudo apt install -y zram-tools
-  sudo systemctl enable zramswap --now
-
-  echo 'vm.swappiness=10' | sudo tee -a /etc/sysctl.conf
-  echo 'vm.vfs_cache_pressure=50' | sudo tee -a /etc/sysctl.conf
-  echo 'vm.dirty_ratio=15' | sudo tee -a /etc/sysctl.conf
-  echo 'vm.dirty_background_ratio=5' | sudo tee -a /etc/sysctl.conf
-
-  sudo sysctl -p
-
-  sudo ufw default deny incoming
-  sudo ufw default allow outgoing
-  sudo ufw allow ssh
-  sudo ufw enable
-
-  progress 65 "Performance tweaks applied."
-}
-
-install_vscode() {
-  progress 70 "Installing Visual Studio Code..."
-  sudo snap install code --classic || echo "?? VS Code installation failed"
-}
-
-install_pterodactyl() {
-  progress 80 "Installing Pterodactyl Panel and Wings..."
-
-  sudo apt install -y software-properties-common curl apt-transport-https ca-certificates gnupg
-
-  sudo add-apt-repository ppa:ondrej/php -y
-  sudo apt update
-  sudo apt install -y php8.1 php8.1-cli php8.1-fpm php8.1-mysql php8.1-zip php8.1-mbstring php8.1-bcmath php8.1-curl php8.1-gd php8.1-pgsql php8.1-xml php8.1-tokenizer php8.1-opcache php8.1-redis
-
-  curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-  sudo apt install -y nodejs redis-server
-
-  curl -sS https://getcomposer.org/installer | php
-  sudo mv composer.phar /usr/local/bin/composer
-
-  curl -L https://github.com/pterodactyl/wings/releases/latest/download/wings_linux_amd64 -o wings
-  sudo mv wings /usr/local/bin/wings
-  sudo chmod +x /usr/local/bin/wings
-
-  sudo systemctl enable redis-server --now
-  sudo systemctl enable wings --now
-
-  progress 90 "Pterodactyl installed."
-}
-
-install_security() {
-  progress 75 "Applying DDOS and security hardening..."
-
-  sudo apt install -y iptables-persistent
-  sudo iptables -F
-  sudo iptables -X
-
-  sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-  sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --set
-  sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --update --seconds 60 --hitcount 4 -j DROP
-  sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-  sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
-  sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
-  sudo iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/second -j ACCEPT
-  sudo iptables -A INPUT -j DROP
-
-  sudo netfilter-persistent save
-
-  echo "net.ipv4.tcp_syncookies = 1" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.conf.all.rp_filter = 1" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.conf.default.rp_filter = 1" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.icmp_echo_ignore_broadcasts = 1" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.icmp_ignore_bogus_error_responses = 1" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.tcp_max_syn_backlog = 2048" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.tcp_synack_retries = 2" | sudo tee -a /etc/sysctl.conf
-  echo "net.ipv4.tcp_syn_retries = 2" | sudo tee -a /etc/sysctl.conf
-
-  sudo sysctl -p
-
-  progress 85 "DDOS and security tweaks applied."
-}
-
+# Profiles override flags
 case $PROFILE in
   minimal)
-    install_minimal
-    install_java
-    install_vscode
     ;;
   webdev)
-    install_minimal
-    install_java
-    install_webdev
-    install_vscode
+    INSTALL_SECURITY=false
     ;;
   datasci)
-    install_minimal
-    install_java
-    install_datasci
-    install_vscode
+    INSTALL_SECURITY=false
     ;;
   fullstack)
-    install_minimal
-    install_java
-    install_webdev
-    install_datasci
-    install_media
-    install_perf
-    install_vscode
+    INSTALL_SECURITY=false
+    ;;
+  serveropt)
+    ;;
+  texlive)
+    ;;
+  benchmark)
+    ;;
+  monitoring)
+    ;;
+  backup)
+    ;;
+  ultraperf)
+    ;;
+  all)
+    INSTALL_SECURITY=true
+    INSTALL_TEXLIVE=true
+    INSTALL_SERVEROPT=true
+    INSTALL_BENCHMARK=true
+    INSTALL_MONITORING=true
+    INSTALL_BACKUP=true
+    INSTALL_ULTRAPERF=true
+    ;;
+  custom)
     ;;
   *)
-    echo "Invalid option."
+    echo -e "? Invalid option. Please rerun script."
     exit 1
     ;;
 esac
 
-if [ "$INSTALL_PTERODACTYL" = true ]; then
-  install_pterodactyl
-fi
+# Progress helper
+env PROG=0
+progress() {
+  local percent="$1"; shift
+  local message="$*"
+  PROG=$percent
+  local filled=$(( percent * 40 / 100 ))
+  local empty=$(( 40 - filled ))
+  local bar=$(printf "%${filled}s" | tr ' ' '#')$(printf "%${empty}s" | tr ' ' '-')
+  echo -ne "?? ${message}... [${bar}] ${percent}%\r"
+}
 
-if [ "$INSTALL_SECURITY" = true ]; then
-  install_security
-fi
+echo
 
-progress 100 "Setup complete!"
+# -----------------------------------------------------------------------
+# ?? Installation Functions
+# -----------------------------------------------------------------------
+install_minimal() {
+  progress 10 "Updating system & installing core tools"
+  sudo apt update && sudo apt upgrade -y
+  progress 30
+  sudo apt install -y curl wget git unzip zip htop net-tools ufw build-essential neofetch
+  progress 60
+  echo -e "\n?? Minimal setup complete."
+}
 
-whiptail --title "Setup finished" --msgbox "? Setup for profile '$PROFILE' complete!\n\nLog saved to:\n$LOGFILE\n\nPlease reboot to apply all changes." 12 60
+install_java() {
+  progress 10 "Installing Java (8,11,17,21)"
+  sudo add-apt-repository ppa:openjdk-r/ppa -y && sudo apt update
+  sudo apt install -y openjdk-8-jdk openjdk-11-jdk openjdk-17-jdk openjdk-21-jdk
+  progress 50
+  echo -e "\n? Java installed."
+}
+
+install_webdev() {
+  progress 10 "Installing WebDev tools (Python3, Node, Docker)"
+  sudo apt install -y python3 python3-pip nodejs npm docker.io docker-compose
+  sudo usermod -aG docker $USER
+  progress 50
+  echo -e "\n?? WebDev stack ready."
+}
+
+install_datasci() {
+  progress 10 "Fixing packages & installing Data Science tools"
+  sudo apt-get update --fix-missing
+  sudo apt-get install -f -y
+  sudo dpkg --configure -a
+  sudo apt-get -o Dpkg::Options::="--force-confnew" --fix-broken install -y
+  sudo apt-get clean && sudo apt-get autoremove -y
+  progress 30
+  sudo apt install -y mariadb-server mariadb-client python3-pip jupyter-notebook default-mysql-client postgresql sqlite3
+  progress 70
+  echo -e "\n?? Data Science tools installed."
+}
+
+install_media() {
+  progress 10 "Installing multimedia & UI tools"
+  sudo apt install -y vlc gimp obs-studio qbittorrent gparted
+  progress 50
+  echo -e "\n?? Media tools installed."
+}
+
+install_perf() {
+  progress 10 "Applying performance & RAM tweaks"
+  sudo apt install -y zram-tools preload
+  sudo systemctl enable zramswap --now
+  echo 'vm.swappiness = 10' | sudo tee -a /etc/sysctl.conf
+  echo 'vm.vfs_cache_pressure = 50' | sudo tee -
