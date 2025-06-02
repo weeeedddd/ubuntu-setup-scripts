@@ -188,7 +188,8 @@ install_vscode() {
 
 install_security() {
   progress 10 "Applying DDOS & security hardening"
-  sudo apt install -y iptables-persistent fail2ban
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent
+  sudo apt install -y fail2ban
   sudo iptables -F && sudo iptables -X
   sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
   sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW -m recent --set
@@ -199,7 +200,6 @@ install_security() {
   sudo iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/second -j ACCEPT
   sudo iptables -A INPUT -j DROP
   sudo netfilter-persistent save
-
   echo "net.ipv4.tcp_syncookies = 1" | sudo tee -a /etc/sysctl.conf
   echo "net.ipv4.conf.all.rp_filter = 1" | sudo tee -a /etc/sysctl.conf
   echo "net.ipv4.conf.default.rp_filter = 1" | sudo tee -a /etc/sysctl.conf
@@ -209,14 +209,8 @@ install_security() {
   echo "net.ipv4.tcp_synack_retries = 2" | sudo tee -a /etc/sysctl.conf
   echo "net.ipv4.tcp_syn_retries = 2" | sudo tee -a /etc/sysctl.conf
   sudo sysctl -p
-  if whiptail --yesno "Do you want to apply recommended iptables firewall rules (DDOS & SSH protection)?" 10 60; then
-  install_iptables_rules
-else
-  echo "Skipping iptables rules setup."
-fi
-
   progress 50
-  echo -e "\n??? Security hardening complete."
+  echo -e "Security hardening complete."
 }
 
 install_iptables_rules() {
