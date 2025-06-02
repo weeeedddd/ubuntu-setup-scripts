@@ -55,12 +55,18 @@ exec > >(tee -a "$LOGFILE") 2>&1
 # Ask for sudo upfront
 sudo -v
 sudo apt install -y iptables-persistent netfilter-persistent
+sudo DEBIAN_FRONTEND=noninteractive apt install -y iptables-persistent netfilter-persistent
 
 # Ensure required packages
 for pkg in whiptail dialog curl wget git; do
   if ! command -v $pkg &>/dev/null; then
     echo -e "?? Installing missing package: $pkg ..."
     sudo apt install -y $pkg
+  if whiptail --yesno "Do you want to apply recommended iptables firewall rules (DDOS & SSH protection)?" 10 60; then
+  install_iptables_rules
+else
+  echo "Skipping iptables rules setup."
+fi
   fi
 done
 
@@ -215,7 +221,7 @@ install_iptables_rules() {
   sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
   sudo iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/second -j ACCEPT
   sudo iptables -A INPUT -j DROP
-  sudo netfilter-persistent save
+  sudo netfilter-persistent save < /dev/null
   progress 60 "✅ iptables rules applied."
 }
 
