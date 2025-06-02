@@ -62,12 +62,20 @@ for pkg in whiptail dialog curl wget git; do
   if ! command -v $pkg &>/dev/null; then
     echo -e "?? Installing missing package: $pkg ..."
     sudo apt install -y $pkg
+  APPLY_IPTABLES="yes"
+if command -v whiptail &>/dev/null && tty -s; then
   if whiptail --yesno "Do you want to apply recommended iptables firewall rules (DDOS & SSH protection)?" 10 60; then
+    APPLY_IPTABLES="yes"
+  else
+    APPLY_IPTABLES="no"
+  fi
+fi
+
+if [[ "$APPLY_IPTABLES" == "yes" ]]; then
   install_iptables_rules
 else
   echo "Skipping iptables rules setup."
 fi
-  fi
 done
 
 # -----------------------------------------------------------------------
