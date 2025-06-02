@@ -54,6 +54,7 @@ exec > >(tee -a "$LOGFILE") 2>&1
 
 # Ask for sudo upfront
 sudo -v
+sudo apt install -y iptables-persistent netfilter-persistent
 
 # Ensure required packages
 for pkg in whiptail dialog curl wget git; do
@@ -194,9 +195,28 @@ install_security() {
   echo "net.ipv4.tcp_synack_retries = 2" | sudo tee -a /etc/sysctl.conf
   echo "net.ipv4.tcp_syn_retries = 2" | sudo tee -a /etc/sysctl.conf
   sudo sysctl -p
+  if whiptail --yesno "Do you want to apply recommended iptables firewall rules (DDOS & SSH protection)?" 10 60; then
+  install_iptables_rules
+else
+  echo "Skipping iptables rules setup."
+fi
 
   progress 50
   echo -e "\n??? Security hardening complete."
+}
+
+install_iptables_rules() {
+  progress 10 "🛡️  Setting recommended iptables rules (DDOS & basic firewall)"
+  sudo iptables -F
+  sudo iptables -X
+  sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+  sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+  sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+  sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+  sudo iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 1/second -j ACCEPT
+  sudo iptables -A INPUT -j DROP
+  sudo netfilter-persistent save
+  progress 60 "✅ iptables rules applied."
 }
 
 install_texlive() {
